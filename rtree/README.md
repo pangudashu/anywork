@@ -170,8 +170,8 @@ demo选取了北京8万个坐标点构建一棵r-tree
     
     * 修改point_data_path、web_index_path路径
     * 修改httpServer地址及端口，同时对应修改web/index.html中的:"http://10.94.106.47:9999/search"
-    * go build -o rtree_searve
-    * ./rtree_searve
+    * go build -o rtree_server
+    * ./rtree_server
     * 
     * 浏览器打开:http://HOST:9999/index
 
