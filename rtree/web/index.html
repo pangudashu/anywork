@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>POI search</title>
+<style type="text/css">
+*{
+    margin:0px;
+    padding:0px;
+}
+body, button, input, select, textarea {
+    font: 12px/16px Verdana, Helvetica, Arial, sans-serif;
+}
+p{
+    width:603px;
+    padding-top:3px;
+    overflow:hidden;
+}
+#container{
+    min-width:600px;
+    min-height:870px;
+}
+</style>
+<script charset="utf-8" src="http://apps.bdimg.com/libs/jquery/2.1.1/jquery.min.js"></script>
+<script charset="utf-8" src="http://map.qq.com/api/js?v=2.exp"></script>
+<script>
+$(document).ready(function(){  
+
+    var map = new qq.maps.Map(document.getElementById("container"),{
+        center: new qq.maps.LatLng(39.916527,116.397128),
+            zoom: 13
+    });
+
+    
+    var anchor = new qq.maps.Point(6, 6),
+        size = new qq.maps.Size(24, 24),
+        origin = new qq.maps.Point(0, 0),
+        icon = new qq.maps.MarkerImage('http://lbs.qq.com/javascript_v2/img/center.gif', size, origin, anchor);
+
+    qq.maps.event.addListener(map, 'click', function(event) {
+        circle.setCenter(event.latLng);
+
+        clear();
+        
+        $.get("http://10.94.106.47:9999/search",{lat:event.latLng.lat,lng:event.latLng.lng,r:200},function(res){
+            var data = eval("("+res+")");
+
+            $.each(data.data, function(i, point){
+                addPoint(new qq.maps.LatLng(point.lat, point.lng));
+            });
+        });
+    });
+
+    var markersArray = [];
+
+    function addPoint(point){
+        var marker=new qq.maps.Marker({
+            icon: icon,
+            position: point, 
+            map:map
+        });
+
+        markersArray.push(marker);
+    }
+
+    function clear(){
+        if (markersArray) {
+            for (i in markersArray) {
+                markersArray[i].setMap(null);
+            }
+        }
+    }
+
+
+    var circle=new qq.maps.Circle({
+        map:map,
+            radius:200,
+            strokeWeight:2
+    });
+
+    /*
+    $.get("http://10.94.106.47:8001/point_list.html",{},function(res){
+        var data = eval("("+res+")");
+        $.each(data.data, function(i, point){
+            addPoint(new qq.maps.LatLng(point.lat, point.lng));
+        });
+
+});
+     */
+
+});
+</script>
+</head>
+<body>
+<div id="container"></div>
+</body>
+</html>
