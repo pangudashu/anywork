@@ -1,7 +1,6 @@
 package rtree
 
 import (
-	//"fmt"
 	"math"
 )
 
@@ -16,6 +15,10 @@ var (
 )
 
 var UnitSphereVolume float64
+
+func SetDim(dim int) {
+	DIM = dim
+}
 
 func SetUnitSphereVolume(dimension int) {
 	log_pi := math.Log(3.1415926535)

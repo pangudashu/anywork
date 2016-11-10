@@ -25,20 +25,28 @@ type Resp struct {
 	Data  interface{} `json:"data"`
 }
 
-var point_data_path = "./point.data"
+var point_data_path = "./point.data"    //坐标点文件
+var web_index_path = "./web/index.html" //测试首页
+
 var point_list map[string]*Point
 var root_node *rtree.Node
 
 func main() {
-	rtree.DIM = DIMENSION
-	rtree.SetUnitSphereVolume(2)
+	rtree.SetDim(DIMENSION)      //设置维度
+	rtree.SetUnitSphereVolume(2) //设置计算多维空间体积的倍率，设置死了，可以由gamma计算
+	rtree.SetNodeMaxCard(4)      //设置每个节点的最大条目数
 
+	//初始化坐标点
 	initPoint()
+
+	//构建R-Tree
 	initRTree()
 
+	//初始化测试http服务
 	initHttpServer()
 }
 
+//测试:搜索接口
 func searchHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 
@@ -96,8 +104,9 @@ func listHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(res_byte)
 }
 
+//测试:首页
 func indexHandler(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "./web/index.html")
+	http.ServeFile(w, r, web_index_path)
 }
 
 func initHttpServer() {

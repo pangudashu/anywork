@@ -1,11 +1,10 @@
 package rtree
 
 import (
-	//"fmt"
 	"math"
 )
 
-const (
+var (
 	MAXCARD = 3
 )
 
@@ -28,6 +27,12 @@ func NewNode() *Node {
 	}
 
 	return n
+}
+
+//设置每个节点的最大条目数
+//非叶子非根节点的条数：ceil(MAXCARD/2) <= m MAXCARD
+func SetNodeMaxCard(card int) {
+	MAXCARD = card
 }
 
 //most important!!!!
@@ -118,7 +123,7 @@ func SplitNode(n *Node, new_branch *Branch) (new_node *Node) {
 	partition := &PartitionVars{
 		partition: make([]int, MAXCARD+1),
 		total:     MAXCARD + 1,
-		min:       int(math.Ceil(MAXCARD / 2.0)),
+		min:       int(math.Ceil(float64(MAXCARD) / 2.0)),
 		taken:     make([]bool, MAXCARD+1),
 	}
 
