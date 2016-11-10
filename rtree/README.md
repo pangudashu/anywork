@@ -159,3 +159,20 @@ R树的根节点为T，查找包含索引条目E的叶节点
 * 步骤LPS2：根据矩形簇的形状进行调整——对前述划分进行标准化。标准化的方式是：对于每一个维度，步骤LPS1计算出了一个距离，不妨记为S；又，对于每个维度，对所有条目的外廓矩形构造一个总的大外廓矩形，记这个大外廓矩形在相应维度上的投影为L；S除以L即为相应维度标准化后的距离。原文是这样的：Normalize the separations by dividing by the width of the entire set along the corresponding dimension。这句话实在太难表达了。
 
 * 步骤LPS3：选择标准化距离最大的一组——原文是这样：Choose the pair with the greatest normalized separation along any dimension。
+
+# Golang实现
+
+只实现了搜索、插入操作,代码从一个C版本转的
+
+demo选取了北京8万个坐标点
+
+### Run Demo
+    
+    * 修改point_data_path、web_index_path路径
+    * 修改httpServer地址及端口，同时对应修改web/index.html中的:"http://10.94.106.47:9999/search"
+    * go build -o rtree_searve
+    * ./rtree_searve
+    * 
+    * 浏览器打开:http://HOST:9999/index
+
+
