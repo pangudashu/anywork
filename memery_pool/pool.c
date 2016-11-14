@@ -27,7 +27,7 @@ void* pool_alloc(pool_t *pool, size_t size)
     u_char *m;
     pool_t *p;
     //小内存直接在pool上分配
-    if(size <= p->max){
+    if(size <= pool->max){
         p = pool->current;
 
         do{
