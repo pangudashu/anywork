@@ -33,7 +33,7 @@ void* pool_alloc(pool_t *pool, size_t size)
         do{
             m = align_ptr(p->d.last, ALIGNMENT);
             //当前pool空间够用
-            if(size_t(p->d.end - m) <= size){
+            if((size_t) (p->d.end - m) >= size){
                 p->d.last = m + size;
                 return m;
             }
@@ -56,7 +56,7 @@ void* alloc_block(pool_t *pool, size_t size)
     size_t  psize;
     u_char  *m;
 
-    psize = (size_t) (pool->end - (u_char *)pool);
+    psize = (size_t) (pool->d.end - (u_char *)pool);
 
     m = memalign(POOL_ALIGNMENT, psize);
     if(m == NULL){
@@ -69,7 +69,7 @@ void* alloc_block(pool_t *pool, size_t size)
 
     m += sizeof(pool_t);
     m = align_ptr(m, ALIGNMENT);
-    new->last = m + size;
+    new->d.last = m + size;
 
     p = pool->current;
     while(p->d.next){
