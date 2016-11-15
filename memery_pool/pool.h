@@ -41,7 +41,10 @@ struct _pool_s{
 
 
 pool_t* create_pool(size_t size);
+int destroy_pool(pool_t *pool);
 void* pool_alloc(pool_t *pool, size_t size);
 void* alloc_block(pool_t *pool, size_t size);
+void* alloc_large(pool_t *pool, size_t size);
+int pool_pfree(pool_t *pool, void *p);
 
 #endif

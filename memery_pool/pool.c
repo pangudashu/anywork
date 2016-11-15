@@ -1,6 +1,6 @@
 #include "pool.h"
 
-pool_t* create_pool(size_t size)
+pool_t* create_pool(size_t size) /*{{{*/
 {
     pool_t *p;
 
@@ -21,8 +21,38 @@ pool_t* create_pool(size_t size)
     
     return p;
 }
+/*}}}*/
 
-void* pool_alloc(pool_t *pool, size_t size)
+int destroy_pool(pool_t *pool) /*{{{*/
+{
+    pool_large_data_t   *l;
+    pool_t              *p,*n;
+
+    l = pool->large;
+    while(l){
+        if(l->data){
+            free(l->data);
+        }
+        l = l->next;
+    }
+
+    p = pool;
+    n = pool->d.next;
+
+    while(p){
+        free(p);
+        p = n;
+
+        if(n){
+            n = n->d.next;
+        }
+    }
+
+    return 1;
+}
+/*}}}*/
+
+void* pool_alloc(pool_t *pool, size_t size) /*{{{*/
 {
     u_char *m;
     pool_t *p;
@@ -45,12 +75,13 @@ void* pool_alloc(pool_t *pool, size_t size)
         return alloc_block(pool, size);
     }
 
-    //todo:large memery
-    return NULL;
+    //large memery
+    return alloc_large(pool, size);
 }
+/*}}}*/
 
 //新分配内存块
-void* alloc_block(pool_t *pool, size_t size)
+void* alloc_block(pool_t *pool, size_t size) /*{{{*/
 {
     pool_t  *p,*new;
     size_t  psize;
@@ -81,5 +112,62 @@ void* alloc_block(pool_t *pool, size_t size)
     p->d.next = new;
     return m;
 }
+/*}}}*/
 
+void* alloc_large(pool_t *pool, size_t size) /*{{{*/
+{
+    int                 n;
+    void                *p;
+    pool_large_data_t   *large;
 
+    p = malloc(size);
+    if(p == NULL){
+        return NULL;
+    }
+
+    n = 0;
+    large = pool->large;
+    while(large){
+        if(large->data == NULL){
+            large->data = p;
+            return p;
+        }
+
+        if(n++ > 3){
+            break;
+        }
+        large = large->next;
+    }
+
+    large = pool_alloc(pool, sizeof(pool_large_data_t));
+    if(large == NULL){
+        free(p);
+        return NULL;
+    }
+    
+    large->data = p;
+    large->next  = pool->large;
+    pool->large = large;
+
+    return p;
+}
+/*}}}*/
+
+int pool_pfree(pool_t *pool, void *p) /*{{{*/
+{
+    pool_large_data_t   *l;
+
+    l = pool->large;
+    while(l){
+        if(!l->data){
+            continue;
+        }
+        if(p == l->data){
+            free(l->data);
+            l->data = NULL;
+            return 1;
+        }
+    }
+    return 1;
+}
+/*}}}*/
