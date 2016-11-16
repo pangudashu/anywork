@@ -64,4 +64,4 @@ void mcs_lock(mcs_locker_t *locker)
 //unlock
 void mcs_unlock(mcs_locker_t *locker)
 ```
-锁在使用前必须调用mcs_init()初始化，各线程使用前必须调用mcs_thread_add_node()在locker中加入node，否则`锁无效`
+锁在使用前必须调用mcs_init()初始化，各线程使用前必须调用mcs_thread_add_node()在locker中加入node，否则`*锁无效*`
