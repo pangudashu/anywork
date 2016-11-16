@@ -45,3 +45,4 @@ test_and_set是一个原子操作，读取lock，查看lock值，如果是0，�
 
 在Unlock方法中，首先查看是否有人排在自己后面。这里要注意，即使暂时发现后面没有人,也必须用原子操作compare_and_swap确认自己是最后的一个节点。如果不能确认 必须等待之后节点排(my_node.next == NULL)上来。最后设置my_node.next.is_locked = false唤醒等待者。
 
+![mcs_lock](https://raw.githubusercontent.com/pangudashu/anywork/master/_img/mcs_lock.jpg)
