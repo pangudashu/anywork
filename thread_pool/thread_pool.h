@@ -16,6 +16,7 @@ struct _thread_task_s {
 
 struct _task_queue_s {
     thread_task_t   *header;
+    thread_task_t   *tail;
 };
 
 struct _thread_pool_s {
@@ -30,6 +31,7 @@ struct _thread_pool_s {
 
 
 int thread_pool_init(thread_pool_t *pool);
-static void * ngx_thread_pool_cycle(void *arg);
+static void * thread_pool_cycle(void *arg);
+int thread_pool_add_task(thread_pool_t *pool, thread_task_t *task);
 
 #endif

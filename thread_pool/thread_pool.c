@@ -12,6 +12,7 @@ int thread_pool_init(thread_pool_t *pool)
     pthread_mutex_init(&pool->mtx, NULL);
 
     pool->queue.header = NULL;
+    pool->queue.tail = NULL;//pool->queue.header;
 
     if(pthread_cond_init(&pool->cond, NULL)){
         pthread_mutex_destroy(&pool->mtx);
@@ -23,7 +24,7 @@ int thread_pool_init(thread_pool_t *pool)
     }
 
     for(i = 0; i < pool->thread_num; i++){
-        if(pthread_create(&tid, &attr, ngx_thread_pool_cycle, pool)){
+        if(pthread_create(&tid, &attr, thread_pool_cycle, pool)){
             return -1;
         }
     }
@@ -33,7 +34,7 @@ int thread_pool_init(thread_pool_t *pool)
     return 0;
 }
 
-static void * ngx_thread_pool_cycle(void *arg)
+static void * thread_pool_cycle(void *arg)
 {
     thread_pool_t   *pool = arg;
     thread_task_t   *task;
@@ -43,9 +44,7 @@ static void * ngx_thread_pool_cycle(void *arg)
             return NULL;
         }
 
-        printf("d\n");
-
-        if(pool->queue.header == NULL){
+        while(pool->queue.header == NULL){
             if(pthread_cond_wait(&pool->cond, &pool->mtx)){
                 pthread_mutex_unlock(&pool->mtx);
                 return NULL;
@@ -54,12 +53,47 @@ static void * ngx_thread_pool_cycle(void *arg)
         task = pool->queue.header;
         pool->queue.header = task->next;
 
+        if(pool->queue.header == NULL){
+            pool->queue.tail = NULL;
+        }
+
         if(pthread_mutex_unlock(&pool->mtx)){
             return NULL;
         }
 
         //handler
+        task->handler(task->ctx);
     }
+}
+
+int thread_pool_add_task(thread_pool_t *pool, thread_task_t *task)
+{
+    if(pthread_mutex_lock(&pool->mtx)){
+        return -1;
+    }
+
+    if(pool->waiting >= pool->max_task){
+        pthread_mutex_unlock(&pool->mtx);
+        return -1;
+    }
+
+    if(pthread_cond_signal(&pool->cond)){
+        pthread_mutex_unlock(&pool->mtx);
+        return -1;
+    }
+    
+    pool->waiting++;
+    if(pool->queue.tail != NULL){
+        pool->queue.tail->next = task;
+        pool->queue.tail = task;
+    }else{
+        pool->queue.tail = task;
+        pool->queue.header = task;
+    }
+
+    pthread_mutex_unlock(&pool->mtx);
+
+    return 0;
 }
 
 
