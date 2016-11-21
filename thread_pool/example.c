@@ -25,19 +25,13 @@ int main(void)
     thread_pool_init(pool);
 
         
-    int i = 0;
-
-    for(;i < 10;i++){
+    for(;;){
         task = malloc(sizeof(thread_task_t));
         task->handler = task_handler;
         task->ctx = NULL;
 
         thread_pool_add_task(pool, task);
         sleep(1);
-    }
-
-    while(1){
-        sleep(10);
     }
 
     return 0;
