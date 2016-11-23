@@ -1,7 +1,7 @@
 # 程序的执行过程
 
 ### 内存布局
-[!mem_struct](https://raw.githubusercontent.com/pangudashu/anywork/master/_img/mem.jpg)
+![mem_struct](https://raw.githubusercontent.com/pangudashu/anywork/master/_img/mem.jpg)
 32位经典内存布局，起始1GB地址为内核空间，后面是向下增长的栈空间(Stack)、内存映射(Memery Mapping Region 即:mmap)，向上增长的堆空间(Heap)，最后面是常量段、数据段、代码段
 
 #### 栈
