@@ -9,7 +9,11 @@ int test(int i, int c)
 
 int main()
 {
-    int res = test(7,99);
+    int a = 123;
+
+    int b = a + 1;
+
+    int res = test(a,b);
 
     printf("%d\n", res);
     return 0;

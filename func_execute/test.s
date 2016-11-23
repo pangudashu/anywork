@@ -35,11 +35,17 @@ main:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register 6
 	subq	$16, %rsp
-	movl	$99, %esi
-	movl	$7, %edi
-	call	test
-	movl	%eax, -4(%rbp)
+	movl	$123, -4(%rbp)
 	movl	-4(%rbp), %eax
+	addl	$1, %eax
+	movl	%eax, -8(%rbp)
+	movl	-8(%rbp), %edx
+	movl	-4(%rbp), %eax
+	movl	%edx, %esi
+	movl	%eax, %edi
+	call	test
+	movl	%eax, -12(%rbp)
+	movl	-12(%rbp), %eax
 	movl	%eax, %esi
 	movl	$.LC0, %edi
 	movl	$0, %eax
