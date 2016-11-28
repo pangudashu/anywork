@@ -17,3 +17,16 @@
 #define throw_exception()   siglongjmp(bailout, 0)
 
 ```
+
+#### 使用
+
+```c
+try{
+    //...
+    //...
+
+    printf("call success\n");
+}catch{
+    printf("catch exception\n");
+}end_try();
+```
