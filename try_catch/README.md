@@ -6,6 +6,8 @@ setjmp()/longjmp()  和 sigsetjmp()/siglongjmp()  都是非局部跳转函数(go
 
 [sigsetjmp()/siglongjmp()](http://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.bpxbd00/rtsigsj.htm)
 
+PHP try-catch也是这么实现的，具体代码:zend.h #223
+
 ```c
 #include <setjmp.h>
 
