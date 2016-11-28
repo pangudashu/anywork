@@ -2,6 +2,8 @@
 实现比较简单，主要利用`sigsetjmp`、`siglongjmp`实现堆栈的跳转
 
 ```c
+#include <setjmp.h>
+
 #define try                                 \
     {                                       \
         if(sigsetjmp(bailout, 0) == 0){
