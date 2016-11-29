@@ -96,13 +96,16 @@ int hash_add(HashTable* ht, char *key, void *val)
     arHash = ((uint32_t *)(ht)->arData) + (int32_t)nIndex;
     b->next = *arHash;
     *arHash = idx;
+
+    ht->nNumUsed++;
+    ht->nNumOfElments++;
    
     //debug
     printf("hash_add key:%s h:%ld arHash:%d arData.idx:%d\n", b->key, h, nIndex, idx);
     return HASH_ADD_SUCCESS;
 }
 
-Bucket * hash_get(HashTable* ht, char *key)
+Bucket * hash_get(HashTable* ht, char *key) /*{{{*/
 {
     uint32_t    h, nIndex, idx;
     Bucket      *b;
@@ -127,6 +130,7 @@ Bucket * hash_get(HashTable* ht, char *key)
     printf("hash_get key:%s h:%ld arHash:%d arData.idx:%ld\n", key, h, nIndex, idx);
     return NULL;
 }
+/*}}}*/
 
 
 

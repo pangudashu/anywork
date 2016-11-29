@@ -7,22 +7,19 @@
 
 int main(void)
 {
-    Bucket  b;
-    char    *key = malloc(20);
-    int     val = 998;
-
-    strcpy(key, "范德萨范德萨发");
-
-    b.key = key;
-    b.type = BUCKET_TYPE_UNDEF;
-
     HashTable ht;
+    hash_init(&ht, 3);
 
-    hash_init(&ht, 112);
+    int a = 118;
+    int b = 119;
 
-    hash_add(&ht, key, &val);
+    hash_add(&ht, "订单234屌丝夫妇", &a);
+    hash_add(&ht, "订单235", &b);
 
-    hash_get(&ht, "范德萨范德萨发");
+    Bucket  *find_bucket;
+    find_bucket = hash_get(&ht, "订单234屌丝夫妇");
+    
+    printf("%s\n", find_bucket->key);
 
 
     return 0;
