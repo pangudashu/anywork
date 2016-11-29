@@ -6,7 +6,10 @@
 #include <string.h>
 
 #define BUCKET_TYPE_UNDEF   1
-#define BUCKET_MAX          (UINT32_MAX - 1)
+#define BUCKET_MAX          INT32_MAX
+
+#define HASH_ADD_SUCCESS    0
+#define HASH_ADD_OVERFLOW   1
 
 
 typedef struct _hash_bucket Bucket;
@@ -31,5 +34,6 @@ struct _hash_table {
 
 void hash_init(HashTable* ht, uint32_t nSize);
 int hash_add(HashTable* ht, char *key, void *val);
+Bucket * hash_get(HashTable* ht, char *key);
 
 #endif

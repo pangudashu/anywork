@@ -15,11 +15,12 @@ static uint32_t _check_size(uint32_t nSize) /*{{{*/
 
 static uint32_t _string_hash_val(char *key) /*{{{*/
 {
-    uint32_t    hash;
+    uint32_t    hash = 0 ;
     size_t      len = strlen(key);
     char        *str = key;
-
+        
     for (; len >= 8; len -= 8) {
+
         hash = ((hash << 5) + hash) + *str++;
         hash = ((hash << 5) + hash) + *str++;
         hash = ((hash << 5) + hash) + *str++;
@@ -77,10 +78,12 @@ int hash_add(HashTable* ht, char *key, void *val)
     uint32_t    *arHash;
 
     h = _string_hash_val(key); //获取hash值
-    
+
     if(ht->nNumUsed < ht->nTableSize){ //有可用空间
         b = ht->arData + ht->nNumUsed;
         idx = ht->nNumUsed;
+    }else{ //扩容
+        //...
     }
 
     b->key = key;
@@ -93,10 +96,37 @@ int hash_add(HashTable* ht, char *key, void *val)
     arHash = ((uint32_t *)(ht)->arData) + (int32_t)nIndex;
     b->next = *arHash;
     *arHash = idx;
-    
-    printf("hash_add key:%s hash_key(nIndex):%d arData.idx:%d\n", b->key, nIndex, idx);
-
-    return 0;
+   
+    //debug
+    printf("hash_add key:%s h:%ld arHash:%d arData.idx:%d\n", b->key, h, nIndex, idx);
+    return HASH_ADD_SUCCESS;
 }
+
+Bucket * hash_get(HashTable* ht, char *key)
+{
+    uint32_t    h, nIndex, idx;
+    Bucket      *b;
+
+    h = _string_hash_val(key);
+    nIndex = h | ht->nTableMask;
+    idx = *(((uint32_t *)(ht)->arData) + (int32_t)nIndex);
+
+    while(idx != UINT32_MAX){
+        b = ht->arData + idx;
+
+        if(key == b->key){
+            return b;
+        }
+        if(h == b->h && memcmp(key, b->key, strlen(key)) == 0){
+            return b;
+        }
+        idx = b->next;
+    }
+
+    //debug
+    printf("hash_get key:%s h:%ld arHash:%d arData.idx:%ld\n", key, h, nIndex, idx);
+    return NULL;
+}
+
 
 

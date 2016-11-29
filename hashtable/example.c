@@ -22,6 +22,8 @@ int main(void)
 
     hash_add(&ht, key, &val);
 
+    hash_get(&ht, "范德萨范德萨发");
+
 
     return 0;
 }
