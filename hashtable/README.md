@@ -1,6 +1,8 @@
 # PHP哈希表(数组)实现
 
-PHP7内部哈希表,即：php强大的array结构的实现。
+PHP7内部哈希表，即PHP强大array结构的内核实现。
+
+关于哈希结构PHP7+与PHP5+的区别可以翻下[nikic](http://nikic.github.io/2014/12/22/PHPs-new-hashtable-implementation.html)大师早些时候写的一篇文章。
 
 ### 数据结构
 ```c
