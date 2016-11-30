@@ -6,12 +6,13 @@
 #include <string.h>
 
 #define BUCKET_TYPE_UNDEF   1
-#define BUCKET_MAX          INT32_MAX
+#define BUCKET_MAX          0x04000000
+#define HT_INVALID_IDX      ((uint32_t) - 1)
 
-#define HASH_ADD_SUCCESS    0
-#define HASH_ADD_OVERFLOW   1
+#define HASH_SUCCESS            0
+#define HASH_RESIZE_OVERFLOW    1
 
-#define HASH_DEL_SUCCESS    0
+//#define HASH_DEBUG
 
 typedef struct _hash_bucket Bucket;
 typedef struct _hash_table  HashTable;
@@ -37,6 +38,9 @@ void hash_init(HashTable* ht, uint32_t nSize);
 int hash_add(HashTable* ht, char *key, void *val);
 Bucket * hash_get(HashTable* ht, char *key);
 int hash_del(HashTable* ht, Bucket *bucket);
+int hash_del_by_key(HashTable* ht, char *key);
 void hash_foreach(HashTable *ht);
+void hash_rehash(HashTable *ht);
+
 
 #endif
