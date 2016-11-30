@@ -41,5 +41,10 @@ struct _zend_array {
 
 HashTable中有两个非常相近的值:`nNumUsed`、`nNumOfElements`，`nNumOfElements`表示哈希表已有元素数，那这个值不跟`nNumUsed`一样吗？为什么要定义两个呢？实际上它们有不同的含义，当将一个元素从哈希表删除时并不会将对应的Bucket移除，而是将Bucket存储的zval标示为`IS_UNDEF`，只有扩容时发现nNumOfElements与nNumUsed相差达到一定数量(这个数量是:`ht->nNumUsed - ht->nNumOfElements > (ht->nNumOfElements >> 5)`)时才会将已删除的元素全部移除，重新构建哈希表。所以`nNumUsed`>=`nNumOfElements`。
 
-HashTable中另外一个非常重要的值`arData`，这个值指向存储元素列表的第一个Bucket，插入元素时按顺序依次插入列表，比如第一个元素在arData[0]、第二个在arData[1]...arData[nNumUsed]。PHP数组的有序性就是通过`arData`保证的。
+HashTable中另外一个非常重要的值`arData`，这个值指向存储元素列表的第一个Bucket，插入元素时按顺序依次插入列表，比如第一个元素在arData[0]、第二个在arData[1]...arData[nNumUsed]。PHP数组的有序性正是通过`arData`保证的。
+
+哈希表实现的关键是有一个数组存储哈希值与Bucket的映射，但是HashTable中并没有这样一个索引数组。
+
+实际上这个索引数组包含在`arData`中，索引数组与Bucket列表一起分配，arData指向了Bucket列表的起始位置，而索引数组可以通过arData指针向前移动访问到，即arData[-1]、arData[-2]、arData[-3]......索引数组的结构是`uint32_t`,它存储的是Bucket元素在arData中的位置。
+
 
