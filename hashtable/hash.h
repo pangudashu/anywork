@@ -11,6 +11,7 @@
 #define HASH_ADD_SUCCESS    0
 #define HASH_ADD_OVERFLOW   1
 
+#define HASH_DEL_SUCCESS    0
 
 typedef struct _hash_bucket Bucket;
 typedef struct _hash_table  HashTable;
@@ -35,5 +36,7 @@ struct _hash_table {
 void hash_init(HashTable* ht, uint32_t nSize);
 int hash_add(HashTable* ht, char *key, void *val);
 Bucket * hash_get(HashTable* ht, char *key);
+int hash_del(HashTable* ht, Bucket *bucket);
+void hash_foreach(HashTable *ht);
 
 #endif
