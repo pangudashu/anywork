@@ -2,7 +2,7 @@
 
 PHP7内部哈希表，即PHP强大array结构的内核实现。
 
-关于哈希结构PHP7+与PHP5+的区别可以翻下[nikic](http://nikic.github.io/2014/12/22/PHPs-new-hashtable-implementation.html)大师早些时候写的一篇文章。
+关于哈希结构PHP7+与PHP5+的区别可以翻下[[nikic]](http://nikic.github.io/2014/12/22/PHPs-new-hashtable-implementation.html)大师早些时候写的一篇文章，这里不作讨论。
 
 ### 数据结构
 ```c
@@ -68,6 +68,47 @@ nIndex = key->h | ht->nTableMask;
 11111111 11111111 11111111 11000000   -64
 11111111 11111111 11111111 10000000   -128
 ```
+### 哈希冲突
+哈希冲突是指不同的key可能计算得到相同的哈希值，但是这些值又需要插入同一个哈希表。一般解决方法是将Bucket串成链表，查找时遍历链表比较key。
 
+PHP的实现也是类似，只是指向冲突元素的指针并没有直接存在Bucket中，而是存在嵌入的`zval`中，zval的结构：
 
+```c
+struct _zval_struct {
+    zend_value        value;            /* value */
+    union {
+        struct {
+            ZEND_ENDIAN_LOHI_4(
+                    zend_uchar    type,         /* active type */
+                    zend_uchar    type_flags,
+                    zend_uchar    const_flags,
+                    zend_uchar    reserved)     /* call info for EX(This) */
+        } v;
+        uint32_t type_info;
+    } u1;
+    union {
+        uint32_t     var_flags;
+        uint32_t     next;                 /* hash collision chain */
+        uint32_t     cache_slot;           /* literal cache slot */
+        uint32_t     lineno;               /* line number (for ast nodes) */
+        uint32_t     num_args;             /* arguments number for EX(This) */
+        uint32_t     fe_pos;               /* foreach position */
+        uint32_t     fe_iter_idx;          /* foreach iterator index */
+    } u2;
+};
+```
 
+`zval.u2.next`存的就是冲突元素在Bucket数组中的位置，所以查找过程类似：
+
+```c
+zend_ulong h = zend_string_hash_val(key);
+uint32_t idx = ht->arHash[h & ht->nTableMask];
+while (idx != INVALID_IDX) {
+    Bucket *b = &ht->arData[idx];
+    if (b->h == h && zend_string_equals(b->key, key)) {
+        return b;
+    }
+    idx = Z_NEXT(b->val); // b->val.u2.next
+}
+return NULL;
+```
