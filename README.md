@@ -8,4 +8,4 @@
 * thread_pool------------------(C)线程池
 * func_execute-----------------(C)linux C程序执行过程
 * try_catch--------------------(C)C语言try-catch实现
-* hashtable--------------------(C)PHP哈希表(数组)实现
+* hashtable--------------------(C)PHP哈希表(数组)的内核实现
