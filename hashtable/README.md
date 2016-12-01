@@ -159,6 +159,8 @@ static void ZEND_FASTCALL zend_hash_do_resize(HashTable *ht)
 ### 重建索引
 当删除元素达到一定数量或扩容后都需要进行索引数组的重建，因为元素所在Bucket位置移动了或哈希数组nTableSize变化了导致原哈希索引变化，已删除的元素将重新可以分配。
 
+![rehash](https://raw.githubusercontent.com/pangudashu/anywork/master/_img/rehash.jpg)
+
 ```c
 //zend_hash.c
 ZEND_API int ZEND_FASTCALL zend_hash_rehash(HashTable *ht)
