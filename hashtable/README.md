@@ -68,8 +68,8 @@ nIndex = key->h | ht->nTableMask;
 11111111 11111111 11111111 11000000   -64
 11111111 11111111 11111111 10000000   -128
 ```
-### 哈希冲突
-哈希冲突是指不同的key可能计算得到相同的哈希值，但是这些值又需要插入同一个哈希表。一般解决方法是将Bucket串成链表，查找时遍历链表比较key。
+### 哈希碰撞
+哈希碰撞是指不同的key可能计算得到相同的哈希值，但是这些值又需要插入同一个哈希表。一般解决方法是将Bucket串成链表，查找时遍历链表比较key。
 
 PHP的实现也是类似，只是指向冲突元素的指针并没有直接存在Bucket中，而是存在嵌入的`zval`中，zval的结构：
 
@@ -112,3 +112,43 @@ while (idx != INVALID_IDX) {
 }
 return NULL;
 ```
+
+### 扩容
+哈希表的大小为2^n，插入时如果容量不够则首先检查已删除元素所占比例，如果达到阈值(ht->nNumUsed - ht->nNumOfElements > (ht->nNumOfElements >> 5)，则将已删除元素移除，重建索引，如果未到阈值则进行扩容操作，扩大为当前大小的2倍，将当前Bucket数组复制到新的空间，然后重建索引。
+
+```c
+//zend_hash.c
+static void ZEND_FASTCALL zend_hash_do_resize(HashTable *ht)
+{
+
+    IS_CONSISTENT(ht);
+    HT_ASSERT(GC_REFCOUNT(ht) == 1);
+
+    if (ht->nNumUsed > ht->nNumOfElements + (ht->nNumOfElements >> 5)) { /* additional term is there to amortize the cost of compaction 只有到一定阈值才进行rehash操作*/
+        HANDLE_BLOCK_INTERRUPTIONS();
+        zend_hash_rehash(ht); //重建索引数组
+        HANDLE_UNBLOCK_INTERRUPTIONS();
+    } else if (ht->nTableSize < HT_MAX_SIZE) {  /* Let's double the table size 扩大为两倍*/
+        void *new_data, *old_data = HT_GET_DATA_ADDR(ht);
+        uint32_t nSize = ht->nTableSize + ht->nTableSize;
+        Bucket *old_buckets = ht->arData;
+
+        HANDLE_BLOCK_INTERRUPTIONS();
+        new_data = pemalloc(HT_SIZE_EX(nSize, -nSize), ht->u.flags & HASH_FLAG_PERSISTENT); //新分配arData空间，大小为:(sizeof(Bucket) + sizeof(uint32_t)) * nSize
+        ht->nTableSize = nSize;
+        ht->nTableMask = -ht->nTableSize; //nTableSize负值
+        HT_SET_DATA_ADDR(ht, new_data); //将arData指针偏移到Bucket数组起始位置
+        memcpy(ht->arData, old_buckets, sizeof(Bucket) * ht->nNumUsed); //将旧的Bucket数组拷到新空间
+        pefree(old_data, ht->u.flags & HASH_FLAG_PERSISTENT); //释放旧空间
+        zend_hash_rehash(ht); //重建索引数组
+        HANDLE_UNBLOCK_INTERRUPTIONS();
+    } else {
+        zend_error_noreturn(E_ERROR, "Possible integer overflow in memory allocation (%zu * %zu + %zu)", ht->nTableSize * 2, sizeof(Bucket) + sizeof(uint32_t), sizeof(Bucket));
+    }
+}
+
+#define HT_SET_DATA_ADDR(ht, ptr) do { \
+        (ht)->arData = (Bucket*)(((char*)(ptr)) + HT_HASH_SIZE((ht)->nTableMask)); \
+    } while (0)
+```
+
