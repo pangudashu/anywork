@@ -2,7 +2,9 @@
 
 PHP7内部哈希表，即PHP强大array结构的内核实现。
 
-关于哈希结构PHP7+与PHP5+的区别可以翻下[[nikic]](http://nikic.github.io/2014/12/22/PHPs-new-hashtable-implementation.html)大师早些时候写的一篇文章，这里不作讨论。
+哈希表是PHP内部非常重要的数据结构，除了PHP用户空间的Array，内核也随处用到，比如function、class的索引、符号表等等都用到了哈希表。
+
+关于哈希结构PHP7+与PHP5+的区别可以翻下[[nikic]](http://nikic.github.io/2014/12/22/PHPs-new-hashtable-implementation.html)早些时候写的一篇文章，这里不作讨论。
 
 ### 数据结构
 ```c
@@ -112,6 +114,8 @@ while (idx != INVALID_IDX) {
 }
 return NULL;
 ```
+### 插入、查找、删除
+这几个基本操作比较简单，不再赘述，定位到元素所在Bucket位置后的操作类似单链表的插入、删除、查找。
 
 ### 扩容
 哈希表的大小为2^n，插入时如果容量不够则首先检查已删除元素所占比例，如果达到阈值(ht->nNumUsed - ht->nNumOfElements > (ht->nNumOfElements >> 5)，则将已删除元素移除，重建索引，如果未到阈值则进行扩容操作，扩大为当前大小的2倍，将当前Bucket数组复制到新的空间，然后重建索引。
@@ -124,11 +128,11 @@ static void ZEND_FASTCALL zend_hash_do_resize(HashTable *ht)
     IS_CONSISTENT(ht);
     HT_ASSERT(GC_REFCOUNT(ht) == 1);
 
-    if (ht->nNumUsed > ht->nNumOfElements + (ht->nNumOfElements >> 5)) { /* additional term is there to amortize the cost of compaction 只有到一定阈值才进行rehash操作*/
+    if (ht->nNumUsed > ht->nNumOfElements + (ht->nNumOfElements >> 5)) { //只有到一定阈值才进行rehash操作
         HANDLE_BLOCK_INTERRUPTIONS();
         zend_hash_rehash(ht); //重建索引数组
         HANDLE_UNBLOCK_INTERRUPTIONS();
-    } else if (ht->nTableSize < HT_MAX_SIZE) {  /* Let's double the table size 扩大为两倍*/
+    } else if (ht->nTableSize < HT_MAX_SIZE) {  //扩大为两倍
         void *new_data, *old_data = HT_GET_DATA_ADDR(ht);
         uint32_t nSize = ht->nTableSize + ht->nTableSize;
         Bucket *old_buckets = ht->arData;
@@ -150,5 +154,65 @@ static void ZEND_FASTCALL zend_hash_do_resize(HashTable *ht)
 #define HT_SET_DATA_ADDR(ht, ptr) do { \
         (ht)->arData = (Bucket*)(((char*)(ptr)) + HT_HASH_SIZE((ht)->nTableMask)); \
     } while (0)
+```
+
+### 重建索引
+当删除元素达到一定数量或扩容后都需要进行索引数组的重建，因为元素所在Bucket位置移动了或哈希数组nTableSize变化了导致原哈希索引变化，已删除的元素将重新可以分配。
+
+```c
+//zend_hash.c
+ZEND_API int ZEND_FASTCALL zend_hash_rehash(HashTable *ht)
+{
+    Bucket *p;
+    uint32_t nIndex, i;
+
+    ...
+
+    i = 0;
+    p = ht->arData;
+    if (ht->nNumUsed == ht->nNumOfElements) { //没有已删除的直接遍历Bucket数组重新插入索引数组即可
+        do {
+            nIndex = p->h | ht->nTableMask;
+            Z_NEXT(p->val) = HT_HASH(ht, nIndex);
+            HT_HASH(ht, nIndex) = HT_IDX_TO_HASH(i);
+            p++;
+        } while (++i < ht->nNumUsed);
+    } else {
+        do {
+            if (UNEXPECTED(Z_TYPE(p->val) == IS_UNDEF)) {//有已删除元素需要将其移到后面，压实Bucket数组
+
+                ......
+
+                    while (++i < ht->nNumUsed) {
+                        p++;
+                        if (EXPECTED(Z_TYPE_INFO(p->val) != IS_UNDEF)) {
+                            ZVAL_COPY_VALUE(&q->val, &p->val);
+                            q->h = p->h;
+                            nIndex = q->h | ht->nTableMask;
+                            q->key = p->key;
+                            Z_NEXT(q->val) = HT_HASH(ht, nIndex);
+                            HT_HASH(ht, nIndex) = HT_IDX_TO_HASH(j);
+                            if (UNEXPECTED(ht->nInternalPointer == i)) {
+                                ht->nInternalPointer = j;
+                            }
+                            q++;
+                            j++;
+                        }
+                    }
+
+                ......
+
+                ht->nNumUsed = j;
+                break;
+            }
+            
+            nIndex = p->h | ht->nTableMask;
+            Z_NEXT(p->val) = HT_HASH(ht, nIndex);
+            HT_HASH(ht, nIndex) = HT_IDX_TO_HASH(i);
+            p++;
+        }while(++i < ht->nNumUsed);
+    }
+
+}
 ```
 
