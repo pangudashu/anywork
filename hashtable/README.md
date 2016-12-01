@@ -6,6 +6,8 @@ PHP7内部哈希表，即PHP强大array结构的内核实现。
 
 关于哈希结构PHP7+与PHP5+的区别可以翻下[[nikic]](http://nikic.github.io/2014/12/22/PHPs-new-hashtable-implementation.html)早些时候写的一篇文章，这里不作讨论。
 
+示例中的HastTable实现并不是将PHP实际的实现摘出来的，而是根据PHP的实现按照自己的思路具体实现的，可以作为参考。
+
 ### 数据结构
 ```c
 //zend_types.h
@@ -62,7 +64,7 @@ nIndex = key->h | ht->nTableMask;
 ```
 显然位运算要比取模更快。
 
-`nTableMask`为`nTableSize`的负数，即:`nTableMask = ~nTableSize + 1`，因为`nTableSize`等于2^n，所以`nTableMask`二进制位右侧全部为0，也就保证了`|nIndex| <= nTableSize`：
+`nTableMask`为`nTableSize`的负数，即:`nTableMask = -nTableSize`，因为`nTableSize`等于2^n，所以`nTableMask`二进制位右侧全部为0，也就保证了`|nIndex| <= nTableSize`：
 ```c
 11111111 11111111 11111111 11111000   -8
 11111111 11111111 11111111 11110000   -16
@@ -71,7 +73,7 @@ nIndex = key->h | ht->nTableMask;
 11111111 11111111 11111111 10000000   -128
 ```
 ### 哈希碰撞
-哈希碰撞是指不同的key可能计算得到相同的哈希值，但是这些值又需要插入同一个哈希表。一般解决方法是将Bucket串成链表，查找时遍历链表比较key。
+哈希碰撞是指不同的key可能计算得到相同的哈希值(数值索引的哈希值直接就是数值本身)，但是这些值又需要插入同一个哈希表。一般解决方法是将Bucket串成链表，查找时遍历链表比较key。
 
 PHP的实现也是类似，只是指向冲突元素的指针并没有直接存在Bucket中，而是存在嵌入的`zval`中，zval的结构：
 
