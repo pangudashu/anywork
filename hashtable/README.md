@@ -36,7 +36,7 @@ struct _zend_array {
     uint32_t          nNumOfElements; //哈希表已有元素数
     uint32_t          nTableSize; //哈希表总大小，为2的n次方
     uint32_t          nInternalPointer;
-    zend_long         nNextFreeElement;
+    zend_long         nNextFreeElement; //下一个可用的数值索引,如:arr[] = 1;arr["a"] = 2;arr[] = 3;  则nNextFreeElement = 2;
     dtor_func_t       pDestructor;
 };
 ```
