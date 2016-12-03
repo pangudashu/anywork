@@ -64,7 +64,7 @@ nIndex = key->h | ht->nTableMask;
 ```
 显然位运算要比取模更快。
 
-`nTableMask`为`nTableSize`的负数，即:`nTableMask = -nTableSize`，因为`nTableSize`等于2^n，所以`nTableMask`二进制位右侧全部为0，也就保证了`|nIndex| <= nTableSize`：
+`nTableMask`为`nTableSize`的负数，即:`nTableMask = -nTableSize`，因为`nTableSize`等于2^n，所以`nTableMask`二进制位右侧全部为0，也就保证了nIndex落在数组索引的范围之内(`|nIndex| <= nTableSize`)：
 ```c
 11111111 11111111 11111111 11111000   -8
 11111111 11111111 11111111 11110000   -16
