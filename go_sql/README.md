@@ -104,6 +104,8 @@ type DB struct {
     cleanerCh   chan struct{}
 }
 ```
+`maxIdle`(默认值2)、`maxOpen`(默认值0，无限制)、`maxLifetime(默认值0，永不过期)`可以分别通过`SetMaxIdleConns`、`SetMaxOpenConns`、`SetConnMaxLifetime`设定。
+
 ### 2.2 获取连接
 上面说了`Open`的时是没有建立数据库连接的，只有等用的时候才会connect，获取可用连接的操作有两种策略：cachedOrNewConn(有可用空闲连接则优先使用，没有则创建)、alwaysNewConn(不管有没有空闲连接都重新创建)，下面以一个query的例子看下具体的操作：
 ```go
@@ -211,6 +213,8 @@ func (db *DB) conn(strategy connReuseStrategy) (*driverConn, error) {
 
 __numOpen在连接成功创建前就加了1，这时候如果numOpen已经达到最大值再有获取conn的请求将阻塞在step2，这些请求会等着先前进来的请求释放连接，假设先前进来的这些请求创建连接全部失败，那么如果它们直接返回了那些等待的请求将一直阻塞在哪，因为不可能有连接释放(极限值，如果部分创建成功再会有部分释放)，直到新请求进来重新成功创建连接，显然这样是有问题的，所以`maybeOpenNewConnections`将通知connectionOpener根据`db.connRequests`长度及可创建的最大连接数重新创建连接，然后将新创建的连接发给阻塞的请求。__
 
+注意：如果`maxOpen=0`将不会有请求阻塞等待连接，所有请求只有从freeConn中取不到连接就会新创建。
+
 另外`Query`、`Exec`有个重试机制，首先优先使用空闲连接，如果2次取到的连接都无效则尝试新创建连接。
 
 获取到可用连接后将调用具体数据库的driver处理sql。
@@ -265,6 +269,22 @@ func (db *DB) putConnDBLocked(dc *driverConn, err error) bool {
 ```
 释放的过程：
 * step1：首先检查下当前归还的连接是否有效(由调用方提供)，如果无效则不再放入连接池，然后检查下等待连接的请求数新建连接，类似获取连接时的异常处理，如果连接有效则进入下一步；
-* step2：检查下当前是否有等待连接阻塞的请求，有的话将当前连接发给最早的那个请求，没有的话则放入freeConn空闲连接池。
+* step2：检查下当前是否有等待连接阻塞的请求，有的话将当前连接发给最早的那个请求，没有的话则再判断空闲连接数是否达到上限，没有则放入freeConn空闲连接池，达到上限则将连接关闭释放。
 
+有个地方需要注意的是，`Query`、`Exec`操作用法有些差异：
 
+* a.`Exec`(update、insert、delete等无结果集返回的操作)调用完后会自动释放连接；
+* b.`Query`(返回sql.Rows)则不会释放连接，调用完后仍然占有连接，它将连接的所属权转移给了`sql.Rows`，所以需要手动调用close归还连接，即使不用Rows也得调用rows.Close()，如下的用法都是错误的：
+```go
+//错误
+db.SetMaxOpenConns(1)
+db.Query("select * from test")
+
+row,err := db.Query("select * from test") //此操作将一直阻塞
+
+//正确
+db.SetMaxOpenConns(1)
+r,_ := db.Query("select * from test")
+r.Close() //将连接的所属权归还，释放连接
+row,err := db.Query("select * from test")
+```
