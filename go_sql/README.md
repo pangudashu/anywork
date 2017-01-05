@@ -76,7 +76,9 @@ type Driver interface {
 ```
 假如我们同时用到多种数据库，就可以通过调用`sql.Register`将不同数据库的实现注册到`sql.drivers`中去，用的时候再根据注册的name将对应的driver取出。
 
-## 2.获取可用连接
+## 2.连接池实现
+
+### 2.1 初始化DB
 ```go
 db, err := sql.Open("mysql", "username:password@tcp(host)/db_name?charset=utf8&allowOldPasswords=1")
 ```
@@ -102,5 +104,109 @@ type DB struct {
     cleanerCh   chan struct{}
 }
 ```
+### 2.2 获取连接
+上面说了`Open`的时是没有建立数据库连接的，只有等用的时候才会connect，下面以一个query的例子看下具体的操作：
+```go
+rows, err := db.Query("select * from test")
+```
+`database/sql/sql.go`：
+```go
+func (db *DB) Query(query string, args ...interface{}) (*Rows, error) {
+    var rows *Rows
+    var err error
+    //maxBadConnRetries = 2
+    for i := 0; i < maxBadConnRetries; i++ {
+        rows, err = db.query(query, args, cachedOrNewConn)
+        if err != driver.ErrBadConn {
+            break
+        }
+    }
+    if err == driver.ErrBadConn {
+        return db.query(query, args, alwaysNewConn)
+    }
+    return rows, err
+}
 
-## 3.连接释放
+func (db *DB) query(query string, args []interface{}, strategy connReuseStrategy) (*Rows, error) {
+    ci, err := db.conn(strategy)
+    if err != nil {
+        return nil, err
+    }
+
+    //到这已经获取到了可用连接，下面进行具体的数据库操作
+    return db.queryConn(ci, ci.releaseConn, query, args)
+}
+```
+数据库连接由`db.query()`获取：
+```go
+func (db *DB) conn(strategy connReuseStrategy) (*driverConn, error) {
+    db.mu.Lock()
+    if db.closed {
+        db.mu.Unlock()
+        return nil, errDBClosed
+    }
+    lifetime := db.maxLifetime
+
+    //从freeConn取一个空闲连接
+    numFree := len(db.freeConn)
+    if strategy == cachedOrNewConn && numFree > 0 {
+        conn := db.freeConn[0]
+        copy(db.freeConn, db.freeConn[1:])
+        db.freeConn = db.freeConn[:numFree-1]
+        conn.inUse = true
+        db.mu.Unlock()
+        if conn.expired(lifetime) {
+            conn.Close()
+            return nil, driver.ErrBadConn
+        }
+        return conn, nil
+    }
+
+    //如果没有空闲连接，而且当前建立的连接数已经达到最大限制则将请求加入connRequests队列，
+    //并阻塞在这里，直到其它协程将占用的连接释放
+    if db.maxOpen > 0 && db.numOpen >= db.maxOpen {
+        // Make the connRequest channel. It's buffered so that the
+        // connectionOpener doesn't block while waiting for the req to be read.
+        req := make(chan connRequest, 1)
+        db.connRequests = append(db.connRequests, req)
+        db.mu.Unlock()
+        ret, ok := <-req  //阻塞
+        if !ok {
+            return nil, errDBClosed
+        }
+        if ret.err == nil && ret.conn.expired(lifetime) { //连接过期了
+            ret.conn.Close()
+            return nil, driver.ErrBadConn
+        }
+        return ret.conn, ret.err
+    }
+
+    db.numOpen++ //上面说了numOpen是已经建立或即将建立连接数，这里还没有建立连接，只是乐观的认为后面会成功，失败的时候再将此值减1
+    db.mu.Unlock()
+    ci, err := db.driver.Open(db.dsn) //调用driver的Open方法建立连接
+    if err != nil { //创建连接失败
+        db.mu.Lock()
+        db.numOpen-- // correct for earlier optimism
+        db.maybeOpenNewConnections()  //通知connectionOpener协程尝试重新建立连接，否则在db.connRequests中等待的请求将一直阻塞，知道下次有连接建立
+        db.mu.Unlock()
+        return nil, err
+    }
+    db.mu.Lock()
+    dc := &driverConn{
+        db:        db,
+        createdAt: nowFunc(),
+        ci:        ci,
+    }
+    db.addDepLocked(dc, dc)
+    dc.inUse = true
+    db.mu.Unlock()
+    return dc, nil
+}
+```
+总结一下上面获取连接的过程：
+* step1：首先检查下freeConn里是否有空闲连接，如果有且未超时则直接复用，返回连接，如果没有或连接已经过期则进入下一步；
+* step2：检查当前已经建立或即将建立的连接数是否已经达到最大值，如果达到最大值也就意味着不能再创建新的连接了，当前请求需要在这等着连接释放，这时当前协程将创建一个信号通知通道：`chan connRequest`，并将其插入`db.connRequests`队列，然后阻塞在接收`chan connRequest`信号上，等到有连接释放时这里将得到通知，检查连接可用后返回；如果还未达到最大值则进入下一步；
+* step3：创建一个连接，首先将numOpen加1，然后再创建连接，如果等到创建完连接再把numOpen加1会导致多个协程同时创建连接时一部分会浪费，如果创建连接成功则返回连接，失败则进入下一步
+* step4：创建连接失败时有一个善后操作，当然并不仅仅是将最初占用的numOpen数减掉，更重要的一个操作是通知connectionOpener协程根据`db.connRequests`等待的长度创建连接，这个操作的原因是：numOpen在连接成功创建前就加了1，这时候如果numOpen已经达到最大值再有获取conn的请求将阻塞在step2，这些请求会等着先前进来的请求释放连接，假设先前进来的这些请求创建连接全部失败，那么如果它们直接返回了那些等待的请求将一直阻塞在哪，因为不可能有连接释放(极限值，如果部分创建成功再会有部分释放)，直到新请求进来重新成功创建连接，显然这样是有问题的，所以`maybeOpenNewConnections`将通知connectionOpener根据`db.connRequests`长度及可创建的最大连接数重新创建连接，然后将新创建的连接发给阻塞的请求。
+
+
