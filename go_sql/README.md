@@ -32,5 +32,50 @@ func main(){
 用法很简单，首先Open打开一个数据库，然后调用Query、Exec进行数据库操作，`github.com/go-sql-driver/mysql`具体实现了`database/sql/driver`的接口，所以最终具体的数据库操作都是调用`github.com/go-sql-driver/mysql`实现的方法，另外需要注意的是同一个数据库只需要调用一次Open，下面根据具体的操作分析下"database/sql"都干了哪些事。
 
 ## 1.驱动注册
+`import _ "github.com/go-sql-driver/mysql"`前面的"_"作用时不需要把该包都导进来，只执行包的`init()`方法，mysql驱动正是通过这种方式注册到"database/sql"中的：
+```go
+//github.com/go-sql-driver/mysql/driver.go
+func init() {
+    sql.Register("mysql", &MySQLDriver{})
+}
 
-## 2.
+type MySQLDriver struct{}
+
+func (d MySQLDriver) Open(dsn string) (driver.Conn, error) {
+    ...
+}
+```
+`init()`通过`Register()`方法将mysql驱动添加到`sql.drivers`(类型：make(map[string]driver.Driver))中,MySQLDriver实现了`driver.Driver`接口：
+```go
+//database/sql/sql.go
+func Register(name string, driver driver.Driver) {
+    driversMu.Lock()
+    defer driversMu.Unlock()
+    if driver == nil {
+        panic("sql: Register driver is nil")
+    }
+    if _, dup := drivers[name]; dup {
+        panic("sql: Register called twice for driver " + name)
+    }
+    drivers[name] = driver
+}
+
+//database/sql/driver/driver.go
+type Driver interface {
+    // Open returns a new connection to the database.
+    // The name is a string in a driver-specific format.
+    //
+    // Open may return a cached connection (one previously
+    // closed), but doing so is unnecessary; the sql package
+    // maintains a pool of idle connections for efficient re-use.
+    //
+    // The returned connection is only used by one goroutine at a
+    // time.
+    Open(name string) (Conn, error)
+}
+
+```
+
+## 2.获取可用连接
+
+## 3.连接释放
