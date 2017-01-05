@@ -73,9 +73,34 @@ type Driver interface {
     // time.
     Open(name string) (Conn, error)
 }
-
 ```
+假如我们同时用到多种数据库，就可以通过调用`sql.Register`将不同数据库的实现注册到`sql.drivers`中去，用的时候再根据注册的name将对应的driver取出。
 
 ## 2.获取可用连接
+```go
+db, err := sql.Open("mysql", "username:password@tcp(host)/db_name?charset=utf8&allowOldPasswords=1")
+```
+`sql.Open()`是取出对应的db，这时mysql还没有建立连接，只是初始化了一个`sql.DB`结构，这时非常重要的一个结构，所有相关的数据都保存在此结构中；Open同时启动了一个`connectionOpener`协程，后面再具体分析其作用。
+
+```go
+type DB struct {
+    driver driver.Driver  //数据库实现驱动
+    dsn    string  //数据库连接、配置参数信息，比如username、host、password等
+    numClosed uint64
+
+    mu           sync.Mutex          //锁，操作DB各成员时用到
+    freeConn     []*driverConn       //空闲连接
+    connRequests []chan connRequest  //阻塞请求队列，等连接数达到最大限制时，后续请求将插入此队列等待可用连接
+    numOpen      int                 //已建立连接或等待建立连接数
+    openerCh    chan struct{}        //用于connectionOpener
+    closed      bool
+    dep         map[finalCloser]depSet
+    lastPut     map[*driverConn]string // stacktrace of last conn's put; debug only
+    maxIdle     int                    //最大空闲连接数
+    maxOpen     int                    //数据库最大连接数
+    maxLifetime time.Duration          //连接最长存活期，超过这个时间连接将不再被复用
+    cleanerCh   chan struct{}
+}
+```
 
 ## 3.连接释放
