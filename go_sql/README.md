@@ -105,7 +105,7 @@ type DB struct {
 }
 ```
 ### 2.2 获取连接
-上面说了`Open`的时是没有建立数据库连接的，只有等用的时候才会connect，下面以一个query的例子看下具体的操作：
+上面说了`Open`的时是没有建立数据库连接的，只有等用的时候才会connect，获取可用连接的操作有两种策略：cachedOrNewConn(有可用空闲连接则优先使用，没有则创建)、alwaysNewConn(不管有没有空闲连接都重新创建)，下面以一个query的例子看下具体的操作：
 ```go
 rows, err := db.Query("select * from test")
 ```
@@ -205,9 +205,66 @@ func (db *DB) conn(strategy connReuseStrategy) (*driverConn, error) {
 ```
 总结一下上面获取连接的过程：
 * step1：首先检查下freeConn里是否有空闲连接，如果有且未超时则直接复用，返回连接，如果没有或连接已经过期则进入下一步；
-* step2：检查当前已经建立或即将建立的连接数是否已经达到最大值，如果达到最大值也就意味着不能再创建新的连接了，当前请求需要在这等着连接释放，这时当前协程将创建一个信号通知通道：`chan connRequest`，并将其插入`db.connRequests`队列，然后阻塞在接收`chan connRequest`信号上，等到有连接释放时这里将得到通知，检查连接可用后返回；如果还未达到最大值则进入下一步；
+* step2：检查当前已经建立或即将建立的连接数是否已经达到最大值，如果达到最大值也就意味着不能再创建新的连接了，当前请求需要在这等着连接释放，这时当前协程将创建一个信号通知通道：`chan connRequest`，并将其插入`db.connRequests`队列，然后阻塞在接收`chan connRequest`信号上，等到有连接释放时这里将拿到释放的连接，检查可用后返回；如果还未达到最大值则进入下一步；
 * step3：创建一个连接，首先将numOpen加1，然后再创建连接，如果等到创建完连接再把numOpen加1会导致多个协程同时创建连接时一部分会浪费，如果创建连接成功则返回连接，失败则进入下一步
 * step4：创建连接失败时有一个善后操作，当然并不仅仅是将最初占用的numOpen数减掉，更重要的一个操作是通知connectionOpener协程根据`db.connRequests`等待的长度创建连接，这个操作的原因是：
-    __numOpen在连接成功创建前就加了1，这时候如果numOpen已经达到最大值再有获取conn的请求将阻塞在step2，这些请求会等着先前进来的请求释放连接，假设先前进来的这些请求创建连接全部失败，那么如果它们直接返回了那些等待的请求将一直阻塞在哪，因为不可能有连接释放(极限值，如果部分创建成功再会有部分释放)，直到新请求进来重新成功创建连接，显然这样是有问题的，所以`maybeOpenNewConnections`将通知connectionOpener根据`db.connRequests`长度及可创建的最大连接数重新创建连接，然后将新创建的连接发给阻塞的请求。__
+
+__numOpen在连接成功创建前就加了1，这时候如果numOpen已经达到最大值再有获取conn的请求将阻塞在step2，这些请求会等着先前进来的请求释放连接，假设先前进来的这些请求创建连接全部失败，那么如果它们直接返回了那些等待的请求将一直阻塞在哪，因为不可能有连接释放(极限值，如果部分创建成功再会有部分释放)，直到新请求进来重新成功创建连接，显然这样是有问题的，所以`maybeOpenNewConnections`将通知connectionOpener根据`db.connRequests`长度及可创建的最大连接数重新创建连接，然后将新创建的连接发给阻塞的请求。__
+
+另外`Query`、`Exec`有个重试机制，首先优先使用空闲连接，如果2次取到的连接都无效则尝试新创建连接。
+
+获取到可用连接后将调用具体数据库的driver处理sql。
+
+### 2.3 释放连接
+数据库连接在被使用完成后需要归还给连接池以供其它请求复用，释放连接的操作是：`putConn()`：
+```go
+func (db *DB) putConn(dc *driverConn, err error) {
+    ...
+
+    //如果连接已经无效，则不再放入连接池
+    if err == driver.ErrBadConn {
+        db.maybeOpenNewConnections()
+        dc.Close() //这里最终将numOpen数减掉
+        return
+    }
+    ...
+
+    //正常归还
+    added := db.putConnDBLocked(dc, nil)
+    ...
+}
+
+func (db *DB) putConnDBLocked(dc *driverConn, err error) bool {
+    if db.maxOpen > 0 && db.numOpen > db.maxOpen {
+        return false
+    }
+    //有等待连接的请求则将连接发给它们，否则放入freeConn
+    if c := len(db.connRequests); c > 0 {
+        req := db.connRequests[0]
+        // This copy is O(n) but in practice faster than a linked list.
+        // TODO: consider compacting it down less often and
+        // moving the base instead?
+        copy(db.connRequests, db.connRequests[1:])
+        db.connRequests = db.connRequests[:c-1]
+        if err == nil {
+            dc.inUse = true
+        }
+        req <- connRequest{
+            conn: dc,
+            err:  err,
+        }
+        return true
+    } else if err == nil && !db.closed && db.maxIdleConnsLocked() > len(db.freeConn) {
+        db.freeConn = append(db.freeConn, dc)
+        db.startCleanerLocked()
+        return true
+    }
+    return false
+}
+
+```
+释放的过程：
+* step1：首先检查下当前归还的连接是否有效(由调用方提供)，如果无效则不再放入连接池，然后检查下等待连接的请求数新建连接，类似获取连接时的异常处理，如果连接有效则进入下一步；
+* step2：检查下当前是否有等待连接阻塞的请求，有的话将当前连接发给最早的那个请求，没有的话则放入freeConn空闲连接池。
 
 
