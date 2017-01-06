@@ -2,7 +2,7 @@
 
 golang的"database/sql"是操作数据库时常用的包，这个包定义了一些sql操作的接口，具体的实现还需要不同数据库的实现，mysql比较优秀的一个驱动是：`github.com/go-sql-driver/mysql`，在接口、驱动的设计上"database/sql"的实现非常优秀，对于类似设计有很多值得我们借鉴的地方，比如beego框架cache的实现模式就是借鉴了这个包的实现；"database/sql"除了定义接口外还有一个重要的功能：__连接池__，我们在实现其他网络通信时也可以借鉴其实现。
 
-连接池的重要性这里就不再多说了，我们先从一个简单的示例看下"database/sql"怎么用：
+连接池的作用这里就不再多说了，我们先从一个简单的示例看下"database/sql"怎么用：
 ```go
 package main
 
@@ -29,7 +29,7 @@ func main(){
     rows.Close()
 }
 ```
-用法很简单，首先Open打开一个数据库，然后调用Query、Exec进行数据库操作，`github.com/go-sql-driver/mysql`具体实现了`database/sql/driver`的接口，所以最终具体的数据库操作都是调用`github.com/go-sql-driver/mysql`实现的方法，另外需要注意的是同一个数据库只需要调用一次Open，下面根据具体的操作分析下"database/sql"都干了哪些事。
+用法很简单，首先Open打开一个数据库，然后调用Query、Exec执行数据库操作，`github.com/go-sql-driver/mysql`具体实现了`database/sql/driver`的接口，所以最终具体的数据库操作都是调用`github.com/go-sql-driver/mysql`实现的方法，同一个数据库只需要调用一次Open即可，下面根据具体的操作分析下"database/sql"都干了哪些事。
 
 ## 1.驱动注册
 `import _ "github.com/go-sql-driver/mysql"`前面的"_"作用时不需要把该包都导进来，只执行包的`init()`方法，mysql驱动正是通过这种方式注册到"database/sql"中的：
@@ -110,7 +110,7 @@ type DB struct {
 `maxIdle`(默认值2)、`maxOpen`(默认值0，无限制)、`maxLifetime(默认值0，永不过期)`可以分别通过`SetMaxIdleConns`、`SetMaxOpenConns`、`SetConnMaxLifetime`设定。
 
 ### 2.2 获取连接
-上面说了`Open`的时是没有建立数据库连接的，只有等用的时候才会connect，获取可用连接的操作有两种策略：cachedOrNewConn(有可用空闲连接则优先使用，没有则创建)、alwaysNewConn(不管有没有空闲连接都重新创建)，下面以一个query的例子看下具体的操作：
+上面说了`Open`时是没有建立数据库连接的，只有等用的时候才会实际建立连接，获取可用连接的操作有两种策略：cachedOrNewConn(有可用空闲连接则优先使用，没有则创建)、alwaysNewConn(不管有没有空闲连接都重新创建)，下面以一个query的例子看下具体的操作：
 ```go
 rows, err := db.Query("select * from test")
 ```
@@ -168,7 +168,7 @@ func (db *DB) conn(strategy connReuseStrategy) (*driverConn, error) {
     }
 
     //如果没有空闲连接，而且当前建立的连接数已经达到最大限制则将请求加入connRequests队列，
-    //并阻塞在这里，直到其它协程将占用的连接释放
+    //并阻塞在这里，直到其它协程将占用的连接释放或connectionOpenner创建
     if db.maxOpen > 0 && db.numOpen >= db.maxOpen {
         // Make the connRequest channel. It's buffered so that the
         // connectionOpener doesn't block while waiting for the req to be read.
@@ -214,9 +214,9 @@ func (db *DB) conn(strategy connReuseStrategy) (*driverConn, error) {
 * step3：创建一个连接，首先将numOpen加1，然后再创建连接，如果等到创建完连接再把numOpen加1会导致多个协程同时创建连接时一部分会浪费，如果创建连接成功则返回连接，失败则进入下一步
 * step4：创建连接失败时有一个善后操作，当然并不仅仅是将最初占用的numOpen数减掉，更重要的一个操作是通知connectionOpener协程根据`db.connRequests`等待的长度创建连接，这个操作的原因是：
 
-__numOpen在连接成功创建前就加了1，这时候如果numOpen已经达到最大值再有获取conn的请求将阻塞在step2，这些请求会等着先前进来的请求释放连接，假设先前进来的这些请求创建连接全部失败，那么如果它们直接返回了那些等待的请求将一直阻塞在哪，因为不可能有连接释放(极限值，如果部分创建成功再会有部分释放)，直到新请求进来重新成功创建连接，显然这样是有问题的，所以`maybeOpenNewConnections`将通知connectionOpener根据`db.connRequests`长度及可创建的最大连接数重新创建连接，然后将新创建的连接发给阻塞的请求。__
+__numOpen在连接成功创建前就加了1，这时候如果numOpen已经达到最大值再有获取conn的请求将阻塞在step2，这些请求会等着先前进来的请求释放连接，假设先前进来的这些请求创建连接全部失败，那么如果它们直接返回了那些等待的请求将一直阻塞在那，因为不可能有连接释放(极限值，如果部分创建成功则会有部分释放)，直到新请求进来重新成功创建连接，显然这样是有问题的，所以`maybeOpenNewConnections`将通知connectionOpener根据`db.connRequests`长度及可创建的最大连接数重新创建连接，然后将新创建的连接发给阻塞的请求。__
 
-注意：如果`maxOpen=0`将不会有请求阻塞等待连接，所有请求只有从freeConn中取不到连接就会新创建。
+注意：如果`maxOpen=0`将不会有请求阻塞等待连接，所有请求只要从freeConn中取不到连接就会新创建。
 
 另外`Query`、`Exec`有个重试机制，首先优先使用空闲连接，如果2次取到的连接都无效则尝试新创建连接。
 
@@ -291,4 +291,7 @@ db.SetMaxOpenConns(1)
 r,_ := db.Query("select * from test")
 r.Close() //将连接的所属权归还，释放连接
 row,err := db.Query("select * from test")
+//other op
+row.Close()
 ```
+
