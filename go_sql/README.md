@@ -85,7 +85,7 @@ type Driver interface {
 ```go
 db, err := sql.Open("mysql", "username:password@tcp(host)/db_name?charset=utf8&allowOldPasswords=1")
 ```
-`sql.Open()`是取出对应的db，这时mysql还没有建立连接，只是初始化了一个`sql.DB`结构，这时非常重要的一个结构，所有相关的数据都保存在此结构中；Open同时启动了一个`connectionOpener`协程，后面再具体分析其作用。
+`sql.Open()`是取出对应的db，这时mysql还没有建立连接，只是初始化了一个`sql.DB`结构，这是非常重要的一个结构，所有相关的数据都保存在此结构中；Open同时启动了一个`connectionOpener`协程，后面再具体分析其作用。
 
 ```go
 type DB struct {
@@ -210,8 +210,8 @@ func (db *DB) conn(strategy connReuseStrategy) (*driverConn, error) {
 ```
 总结一下上面获取连接的过程：
 * step1：首先检查下freeConn里是否有空闲连接，如果有且未超时则直接复用，返回连接，如果没有或连接已经过期则进入下一步；
-* step2：检查当前已经建立或即将建立的连接数是否已经达到最大值，如果达到最大值也就意味着不能再创建新的连接了，当前请求需要在这等着连接释放，这时当前协程将创建一个信号通知通道：`chan connRequest`，并将其插入`db.connRequests`队列，然后阻塞在接收`chan connRequest`信号上，等到有连接释放时这里将拿到释放的连接，检查可用后返回；如果还未达到最大值则进入下一步；
-* step3：创建一个连接，首先将numOpen加1，然后再创建连接，如果等到创建完连接再把numOpen加1会导致多个协程同时创建连接时一部分会浪费，如果创建连接成功则返回连接，失败则进入下一步
+* step2：检查当前已经建立及准备建立的连接数是否已经达到最大值，如果达到最大值也就意味着无法再创建新的连接了，当前请求需要在这等着连接释放，这时当前协程将创建一个channel：`chan connRequest`，并将其插入`db.connRequests`队列，然后阻塞在接收`chan connRequest`上，等到有连接可用时这里将拿到释放的连接，检查可用后返回；如果还未达到最大值则进入下一步；
+* step3：创建一个连接，首先将numOpen加1，然后再创建连接，如果等到创建完连接再把numOpen加1会导致多个协程同时创建连接时一部分会浪费，所以提前将numOpen占住，创建失败再将其减掉；如果创建连接成功则返回连接，失败则进入下一步
 * step4：创建连接失败时有一个善后操作，当然并不仅仅是将最初占用的numOpen数减掉，更重要的一个操作是通知connectionOpener协程根据`db.connRequests`等待的长度创建连接，这个操作的原因是：
 
 __numOpen在连接成功创建前就加了1，这时候如果numOpen已经达到最大值再有获取conn的请求将阻塞在step2，这些请求会等着先前进来的请求释放连接，假设先前进来的这些请求创建连接全部失败，那么如果它们直接返回了那些等待的请求将一直阻塞在那，因为不可能有连接释放(极限值，如果部分创建成功则会有部分释放)，直到新请求进来重新成功创建连接，显然这样是有问题的，所以`maybeOpenNewConnections`将通知connectionOpener根据`db.connRequests`长度及可创建的最大连接数重新创建连接，然后将新创建的连接发给阻塞的请求。__
@@ -271,14 +271,14 @@ func (db *DB) putConnDBLocked(dc *driverConn, err error) bool {
 
 ```
 释放的过程：
-* step1：首先检查下当前归还的连接是否有效(由调用方提供)，如果无效则不再放入连接池，然后检查下等待连接的请求数新建连接，类似获取连接时的异常处理，如果连接有效则进入下一步；
+* step1：首先检查下当前归还的连接在使用过程中是否发现已经无效，如果无效则不再放入连接池，然后检查下等待连接的请求数新建连接，类似获取连接时的异常处理，如果连接有效则进入下一步；
 * step2：检查下当前是否有等待连接阻塞的请求，有的话将当前连接发给最早的那个请求，没有的话则再判断空闲连接数是否达到上限，没有则放入freeConn空闲连接池，达到上限则将连接关闭释放。
 * step3：(只执行一次)启动connectionCleaner协程定时检查feeConn中是否有过期连接，有则剔除。
 
 有个地方需要注意的是，`Query`、`Exec`操作用法有些差异：
 
 * a.`Exec`(update、insert、delete等无结果集返回的操作)调用完后会自动释放连接；
-* b.`Query`(返回sql.Rows)则不会释放连接，调用完后仍然占有连接，它将连接的所属权转移给了`sql.Rows`，所以需要手动调用close归还连接，即使不用Rows也得调用rows.Close()，如下的用法都是错误的：
+* b.`Query`(返回sql.Rows)则不会释放连接，调用完后仍然占有连接，它将连接的所属权转移给了`sql.Rows`，所以需要手动调用close归还连接，即使不用Rows也得调用rows.Close()，否则可能导致后续使用出错，如下的用法是错误的：
 ```go
 //错误
 db.SetMaxOpenConns(1)
