@@ -77,6 +77,8 @@ type Driver interface {
 假如我们同时用到多种数据库，就可以通过调用`sql.Register`将不同数据库的实现注册到`sql.drivers`中去，用的时候再根据注册的name将对应的driver取出。
 
 ## 2.连接池实现
+先看下连接池整体处理流程：
+![sql](../_img/go_sql.jpg)
 
 ### 2.1 初始化DB
 ```go
@@ -270,6 +272,7 @@ func (db *DB) putConnDBLocked(dc *driverConn, err error) bool {
 释放的过程：
 * step1：首先检查下当前归还的连接是否有效(由调用方提供)，如果无效则不再放入连接池，然后检查下等待连接的请求数新建连接，类似获取连接时的异常处理，如果连接有效则进入下一步；
 * step2：检查下当前是否有等待连接阻塞的请求，有的话将当前连接发给最早的那个请求，没有的话则再判断空闲连接数是否达到上限，没有则放入freeConn空闲连接池，达到上限则将连接关闭释放。
+* step3：(只执行一次)启动connectionCleaner协程定时检查feeConn中是否有过期连接，有则剔除。
 
 有个地方需要注意的是，`Query`、`Exec`操作用法有些差异：
 
