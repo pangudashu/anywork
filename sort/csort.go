@@ -15,7 +15,9 @@ func main() {
 				min = j
 			}
 		}
-		arr[i], arr[min] = arr[min], arr[i]
+		if min != i {
+			arr[i], arr[min] = arr[min], arr[i]
+		}
 	}
 
 	fmt.Println(arr)
