@@ -1,0 +1,31 @@
+|.arch x64
+|.actionlist my_actionlist
+|
+|.define aState, r12
+|
+|.define rArg1, rdi
+|
+|.macro begin_function
+|  push aState
+|  mov aState, rArg1
+|.endmacro
+|
+|.macro end_function
+|  pop aState
+|  ret
+|.endmacro
+|
+
+
+static void create_my_function()
+{
+
+    |->my_function:
+        |  begin_function
+        |  mov ecx, 10
+        |  mov eax, edi
+        |  inc eax
+        |  end_function
+}       
+
+
