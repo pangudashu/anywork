@@ -10,35 +10,37 @@ void test1(void *args)
 {
     coroutine_t *co = (coroutine_t *)args;
 
-    redis_client *cli = redis_new(co, "10.94.112.246", 9999);
+    redis_client *cli = NULL;
+    cli = redis_new(co, "10.94.112.246", 6300);
+
+    if(cli == NULL){
+        return;
+    }
+    
+    redis_get(cli, "qp_coro_test");
 }
 
 void test2(void *args)
 {
     coroutine_t *co = (coroutine_t *)args;
     
-    for(int i = 0; i < 5; i++){
-        printf("test 2 -> %d\n", i);
-        core_yield(co);
+    redis_client *cli = NULL;
+    cli = redis_new(co, "10.94.112.246", 6300);
+
+    if(cli == NULL){
+        return;
     }
+    
+    redis_get(cli, "qp_coro_test2");
 }
 
 int main(void)
 {
     event_create();
 
-    coroutine_t *co_1 = coro_create(test1, NULL);
-    //coro_resume(co_1);
-    
-    /*
     coroutine_t *co_2 = coro_create(test2, NULL);
-    coro_resume(co_2);
-    coro_resume(co_2);
-    coro_resume(co_2);
-    coro_resume(co_2);
-    coro_resume(co_2);
-    coro_resume(co_2);
-    */
+    coroutine_t *co_1 = coro_create(test1, NULL);
+    
 
     event_wait();
     return 0;

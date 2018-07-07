@@ -6,6 +6,7 @@
 typedef struct {
     void (*on_connect)(void *args);
     void (*on_read)(void *args);
+    void (*on_write)(void *args);
 } event_handler;
 
 int event_create();

@@ -42,8 +42,9 @@ void event_wait()
             printf("act evnet:%d read:%d write:%d\n", i, events[i].events&EPOLLIN, events[i].events&EPOLLOUT);
             if(events[i].events&EPOLLIN){
                 ((event_handler*)(events[i].data.ptr))->on_read(events[i].data.ptr);
-            }else if(events[i].events&EPOLLOUT){
-                ((event_handler*)(events[i].data.ptr))->on_connect(events[i].data.ptr);
+            }
+            if(events[i].events&EPOLLOUT){
+                ((event_handler*)(events[i].data.ptr))->on_write(events[i].data.ptr);
             }
         }
     }

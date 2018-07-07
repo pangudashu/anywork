@@ -31,7 +31,33 @@ void redis_on_connect(void *args)
 {
     redis_client *cli = (redis_client *)args;
 
-    printf("connect success %d\n", cli->fd);
+    cli->status = READIS_STATUS_CONNECTED;
+    coro_resume(cli->co);
+}
+
+void redis_on_write(void *args)
+{
+    redis_client *cli = (redis_client *)args;
+
+    int len = send(cli->fd, cli->cmd + cli->cmd_send_len, strlen(cli->cmd) - cli->cmd_send_len, 0);
+
+    cli->cmd_send_len += len;
+    if(cli->cmd_send_len == strlen(cli->cmd)){
+        coro_resume(cli->co);
+    }
+}
+
+void redis_on_read(void *args)
+{
+    char buffer[1024];
+    int ret;
+
+    redis_client *cli = (redis_client *)args;
+    
+    if((ret = read(cli->fd, buffer, 1024)) < 0){
+        cli->status = READIS_STATUS_ERROR;
+    }
+    printf("%s\n",buffer);
     coro_resume(cli->co);
 }
 
@@ -53,7 +79,8 @@ redis_client *redis_new(coroutine_t *co, char *host, int port)
         return NULL;
     }
 
-    cli->handler.on_connect = redis_on_connect;
+    cli->handler.on_write = redis_on_connect;
+    cli->handler.on_read = redis_on_read;
     cli->co = co;
 
     cli->serv_addr.sin_family = AF_INET;
@@ -79,9 +106,51 @@ redis_client *redis_new(coroutine_t *co, char *host, int port)
     }
 
     core_yield(co);
-    printf("connect success ret\n");
+    
+    if(cli->status == READIS_STATUS_CONNECTED){
+        return cli;
+    }
+    return NULL;
+}
+
+int redis_send_cmd(redis_client *cli, char *cmd)
+{
+    struct epoll_event ev;
+
+    cli->handler.on_write = redis_on_write;
+    cli->cmd = cmd;
+    
+    ev.data.ptr = &(cli->handler);
+    ev.events = EPOLLOUT|EPOLLET;
+
+    event_ctl(EPOLL_CTL_MOD, cli->fd, &ev);
+
+    core_yield(cli->co);
+    return 0;
+}
+
+int redis_receive(redis_client *cli)
+{
+    struct epoll_event ev;
+
+    cli->handler.on_read = redis_on_read;
+    
+    ev.data.ptr = &(cli->handler);
+    ev.events = EPOLLIN|EPOLLET;
+
+    event_ctl(EPOLL_CTL_MOD, cli->fd, &ev);
+
+    core_yield(cli->co);
+    return 0;
 }
 
 void redis_get(redis_client *cli, char *key)
 {
+    int send_ret;
+
+    char cmd[100];
+    snprintf(cmd, 100, "get %s\r\n", key);
+
+    send_ret = redis_send_cmd(cli, cmd);
+    redis_receive(cli);
 }
