@@ -5,6 +5,7 @@
 #define HEAP_DEFAULT_INITS_SIZE 8
 
 typedef struct _heap_node {
+    uint32_t index;
     uint32_t value;
     void *data;
 } heap_node;
