@@ -16,4 +16,10 @@ typedef struct _heap {
     heap_node **nodes;
 } heap;
 
+
+heap *heap_new();
+heap_node *heap_min_insert(heap *h, uint32_t value, void *data);
+void heap_min_delete(heap *h, heap_node *n);
+heap_node *heap_top(heap *h);
+
 #endif
